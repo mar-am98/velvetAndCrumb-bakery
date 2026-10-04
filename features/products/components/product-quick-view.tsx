@@ -69,7 +69,7 @@ export function ProductQuickView({ product, isOpen, onClose }: ProductQuickViewP
           </div>
 
           {/* Right Side - Details Panel */}
-          <div className="w-full md:w-1/2 p-6 md:p-7 flex flex-col justify-between bg-[#FAF7F2]">
+          <div className="w-full md:w-1/2 p-6 md:p-7 flex flex-col justify-between bg-brand-cream">
             <div className="space-y-5">
               <div>
                 {/* Rating */}
@@ -91,7 +91,7 @@ export function ProductQuickView({ product, isOpen, onClose }: ProductQuickViewP
               </div>
 
               {/* Allergens Box */}
-              <div className="bg-[#F3EDE2] rounded-2xl p-4 text-xs space-y-2">
+              <div className="bg-secondary rounded-2xl p-4 text-xs space-y-2">
                 <div>
                   <span className="font-bold text-brand-espresso">Allergens:</span>{" "}
                   <span className="text-brand-crimson font-medium">Tree Nuts (Pistachio), Dairy, Gluten</span>

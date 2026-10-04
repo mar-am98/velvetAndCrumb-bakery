@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/features/auth/context";
@@ -34,47 +43,94 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // Hydrate this user's saved cart from Supabase
+  // Hydrate this user's saved cart from Supabase. Runs once on login and again
+  // on every realtime change so other tabs/devices reflect without a refresh.
+  const loadSeqRef = useRef(0);
+
+  const loadCart = useCallback(async () => {
+    if (!userId) return;
+    // Bumped whenever a newer load starts (or the user changes) so a slow
+    // response for a previous user can't overwrite the current cart.
+    const seq = ++loadSeqRef.current;
+
+    const { data: rows, error } = await supabase
+      .from("cart_items")
+      .select("*")
+      .order("updated_at", { ascending: true });
+    if (error) {
+      console.error("Failed to load cart:", error);
+      return;
+    }
+    if (!rows || rows.length === 0) {
+      if (seq === loadSeqRef.current) setItems([]);
+      return;
+    }
+
+    const productIds = [...new Set(rows.map((row) => row.product_id))];
+    const { data: products, error: productsError } = await supabase
+      .from("products")
+      .select("*")
+      .in("id", productIds);
+    if (productsError) {
+      console.error("Failed to load cart products:", productsError);
+      return;
+    }
+    if (seq !== loadSeqRef.current) return;
+
+    const hydrated = rows
+      .map((row) => cartRowToItem(row as CartRow, (products ?? []) as Product[]))
+      .filter((item): item is CartItem => item !== null);
+    setItems(hydrated);
+  }, [userId, supabase]);
+
+  useEffect(() => {
+    if (!userId) {
+      loadSeqRef.current++; // invalidate any in-flight load for a signed-out user
+      return;
+    }
+    loadCart();
+  }, [userId, loadCart]);
+
+  // Re-hydrate whenever this user's cart rows change anywhere (other tab, phone)
   useEffect(() => {
     if (!userId) return;
 
-    let cancelled = false;
-
-    (async () => {
-      const { data: rows, error } = await supabase
-        .from("cart_items")
-        .select("*")
-        .order("updated_at", { ascending: true });
-      if (error) {
-        console.error("Failed to load cart:", error);
-        return;
-      }
-      if (!rows || rows.length === 0) {
-        if (!cancelled) setItems([]);
-        return;
-      }
-
-      const productIds = [...new Set(rows.map((row) => row.product_id))];
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("*")
-        .in("id", productIds);
-      if (productsError) {
-        console.error("Failed to load cart products:", productsError);
-        return;
-      }
-      if (cancelled) return;
-
-      const hydrated = rows
-        .map((row) => cartRowToItem(row as CartRow, (products ?? []) as Product[]))
-        .filter((item): item is CartItem => item !== null);
-      setItems(hydrated);
-    })();
+    const channel = supabase
+      .channel("cart-sync")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cart_items",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          loadCart();
+        }
+      )
+      // DELETEs can't be filtered by user_id: realtime skips RLS for deletes and the
+      // old row only carries the primary key, so the filtered listener never fires.
+      // Listen unfiltered and just re-read our own RLS-scoped rows instead.
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "cart_items" },
+        () => {
+          loadCart();
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[cart-sync] realtime subscribed");
+        } else {
+          console.error(`[cart-sync] realtime status: ${status}`);
+        }
+      });
 
     return () => {
-      cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, [userId, supabase]);
+  }, [userId, supabase, loadCart]);
 
   const addItem = (product: ProductStub, portion: PortionSize, quantity: number): boolean => {
     // Signed-out users can't build a box — prompt them to sign in instead

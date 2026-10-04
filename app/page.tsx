@@ -62,7 +62,7 @@ export default async function Home() {
                 <div className="absolute inset-0 rounded-3xl  bg-brand-gold/60 transform rotate-3 scale-105 blur-md pointer-events-none z-0" />
 
                 {/* 2. Main Card Container */}
-                <div className="relative z-10 aspect-[4/3] w-full rounded-2xl overflow-hidden shadow-2xl border border-[#d97706]/30 bg-[#211612]">
+                <div className="relative z-10 aspect-[4/3] w-full rounded-2xl overflow-hidden shadow-2xl border border-brand-gold/30 bg-brand-espresso">
                   <Image 
                     src="https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=1200&q=80"
                     alt="Madagascar Vanilla Bean Cheesecake"
